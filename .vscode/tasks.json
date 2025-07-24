@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Crypto Analysis Bot",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/Scripts/python.exe",
+			"args": [
+				"crypto_bot.py"
+			],
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}
