@@ -9,6 +9,8 @@ import logging
 from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Carica variabili d'ambiente dal file .env
 load_dotenv()
@@ -469,6 +471,29 @@ Comandi disponibili:
             logger.info("Tentativo di riavvio del bot...")
             self.run()
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Handler per health check del servizio"""
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Bot is running!')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        # Silenzioso per non sporcare i logs
+        pass
+
+def start_health_server():
+    """Avvia server per health check (richiesto da Render)"""
+    port = int(os.getenv('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logger.info(f"🌐 Server health check avviato sulla porta {port}")
+    server.serve_forever()
+
 def main():
     """Funzione principale"""
     # Leggi token da variabili d'ambiente
@@ -482,6 +507,10 @@ def main():
         print("2. Crea un nuovo bot con /newbot")
         print("3. Copia il token e impostalo come variabile d'ambiente")
         return
+    
+    # Avvia server health check in thread separato
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
     
     # Crea e avvia bot
     bot = CryptoAnalysisBot(telegram_token, cryptopanic_token)
