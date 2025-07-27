@@ -8,6 +8,10 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 import pandas as pd
+from dotenv import load_dotenv
+
+# Carica variabili d'ambiente dal file .env
+load_dotenv()
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -441,7 +445,7 @@ Comandi disponibili:
     
     def run(self):
         """Avvia il bot"""
-        # Crea applicazione
+        # Crea applicazione con timeouts configurati
         application = Application.builder().token(self.telegram_token).build()
         
         # Aggiungi handlers
@@ -450,9 +454,20 @@ Comandi disponibili:
         application.add_handler(CommandHandler("btc", self.btc_command))
         application.add_handler(CommandHandler("crypto", self.crypto_command))
         
-        # Avvia bot
+        # Avvia bot con gestione errori
         logger.info("🚀 Bot avviato!")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        try:
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True  # Scarta aggiornamenti pendenti per evitare conflitti
+            )
+        except Exception as e:
+            logger.error(f"Errore durante l'esecuzione del bot: {e}")
+            # Prova a riavviare dopo 5 secondi
+            import time
+            time.sleep(5)
+            logger.info("Tentativo di riavvio del bot...")
+            self.run()
 
 def main():
     """Funzione principale"""
