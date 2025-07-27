@@ -77,16 +77,17 @@ class CryptoAnalysisBot:
         self.telegram_token = telegram_token
         self.cryptopanic_token = cryptopanic_token
         
-        # Inizializza exchange Binance
-        self.exchange = ccxt.binance({
+        # Inizializza exchange Bybit (no restrizioni geografiche)
+        self.exchange = ccxt.bybit({
             'apiKey': '',  # Non necessario per dati pubblici
             'secret': '',
             'timeout': 30000,
             'enableRateLimit': True,
+            'sandbox': False,  # Usa API di produzione
         })
     
     async def get_crypto_data(self, symbol: str) -> dict:
-        """Recupera dati crypto da Binance"""
+        """Recupera dati crypto da Bybit"""
         try:
             # Assicurati che il simbolo sia in formato USDT
             if not symbol.endswith('USDT'):
@@ -327,7 +328,7 @@ class CryptoAnalysisBot:
         change_emoji = "🟢" if change_24h > 0 else "🔴" if change_24h < 0 else "🟡"
         change_sign = "+" if change_24h > 0 else ""
         
-        message = f"""📊 **Analisi {symbol}** (Binance)
+        message = f"""📊 **Analisi {symbol}** (Bybit)
 
 💰 **Prezzo attuale:** ${price:,.2f}
 {change_emoji} **Variazione 24h:** {change_sign}{change_24h:.2f}%
