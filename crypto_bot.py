@@ -9,6 +9,8 @@ import logging
 from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Carica variabili d'ambiente dal file .env
 load_dotenv()
@@ -75,16 +77,17 @@ class CryptoAnalysisBot:
         self.telegram_token = telegram_token
         self.cryptopanic_token = cryptopanic_token
         
-        # Inizializza exchange Binance
-        self.exchange = ccxt.binance({
+        # Inizializza exchange Bybit (no restrizioni geografiche)
+        self.exchange = ccxt.bybit({
             'apiKey': '',  # Non necessario per dati pubblici
             'secret': '',
             'timeout': 30000,
             'enableRateLimit': True,
+            'sandbox': False,  # Usa API di produzione
         })
     
     async def get_crypto_data(self, symbol: str) -> dict:
-        """Recupera dati crypto da Binance"""
+        """Recupera dati crypto da Bybit"""
         try:
             # Assicurati che il simbolo sia in formato USDT
             if not symbol.endswith('USDT'):
@@ -325,7 +328,7 @@ class CryptoAnalysisBot:
         change_emoji = "🟢" if change_24h > 0 else "🔴" if change_24h < 0 else "🟡"
         change_sign = "+" if change_24h > 0 else ""
         
-        message = f"""📊 **Analisi {symbol}** (Binance)
+        message = f"""📊 **Analisi {symbol}** (Bybit)
 
 💰 **Prezzo attuale:** ${price:,.2f}
 {change_emoji} **Variazione 24h:** {change_sign}{change_24h:.2f}%
@@ -469,6 +472,29 @@ Comandi disponibili:
             logger.info("Tentativo di riavvio del bot...")
             self.run()
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """Handler per health check del servizio"""
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Bot is running!')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        # Silenzioso per non sporcare i logs
+        pass
+
+def start_health_server():
+    """Avvia server per health check (richiesto da Render)"""
+    port = int(os.getenv('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logger.info(f"🌐 Server health check avviato sulla porta {port}")
+    server.serve_forever()
+
 def main():
     """Funzione principale"""
     # Leggi token da variabili d'ambiente
@@ -482,6 +508,10 @@ def main():
         print("2. Crea un nuovo bot con /newbot")
         print("3. Copia il token e impostalo come variabile d'ambiente")
         return
+    
+    # Avvia server health check in thread separato
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
     
     # Crea e avvia bot
     bot = CryptoAnalysisBot(telegram_token, cryptopanic_token)
