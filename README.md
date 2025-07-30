@@ -1,14 +1,31 @@
-# 🤖 Bot Telegram Analisi Crypto
+# 🤖 Bot Telegram Analisi Crypto Avanzato
 
-Bot Telegram completo per l'analisi tecnica delle criptovalute con prezzi real-time, indicatori tecnici, news e grafici professionali.
+Bot Telegram completo per l'analisi tecnica avanzata delle criptovalute con **predizioni AI**, **segnali MACD**, **supporti/resistenze automatici** e molto altro.
 
-## 🚀 Funzionalità
+## 🚀 Funzionalità Avanzate
 
-### 📊 Analisi Completa
-- **Prezzo real-time** con variazioni 24h da Binance
-- **Indicatori tecnici**: RSI (14), MACD, analisi volumi
-- **Grafici candlestick** con overlay degli indicatori
-- **Suggerimenti tecnici** automatici basati su analisi
+### 🤖 Intelligenza Artificiale
+- **Predizioni AI** con livello di confidenza per decisioni long/short
+- **Sistema di scoring** multi-indicatore per raccomandazioni accurate
+- **Analisi del rischio** automatica (High/Medium/Low)
+
+### 📈 Analisi MACD Professionale
+- **Segnali crossover** MACD in tempo reale
+- **Rilevamento divergenze** bullish/bearish automatico
+- **Analisi momentum** e forza del segnale
+- **Strategie di trading** personalizzate
+
+### 🎯 Supporti e Resistenze
+- **Identificazione automatica** dei livelli chiave
+- **Tracciamento grafico** con linee colorate
+- **Calcolo distanza** dal prezzo attuale
+- **Alert di prossimità** ai livelli critici
+
+### 📊 Analisi Tecnica Completa
+- **Prezzo real-time** con variazioni 24h da Bybit
+- **Indicatori tecnici avanzati**: RSI, MACD, analisi volumi
+- **Grafici candlestick professionali** con segnali sovrapposti
+- **Suggerimenti intelligenti** basati su AI
 
 ### 📰 News Integration
 - **Ultime 3 notizie** per ogni crypto con link cliccabili
@@ -16,16 +33,18 @@ Bot Telegram completo per l'analisi tecnica delle criptovalute con prezzi real-t
 - News sempre aggiornate e pertinenti
 
 ### 🎯 Comandi Disponibili
-- `/start` - Messaggio di benvenuto e istruzioni
-- `/btc` - Analisi completa Bitcoin
-- `/crypto <simbolo>` - Analisi per qualsiasi crypto (ETH, ADA, SOL, etc.)
+- `/start` - Messaggio di benvenuto e istruzioni complete
+- `/btc` - Analisi completa Bitcoin con AI
+- `/crypto <simbolo>` - Analisi completa per qualsiasi crypto
+- `/signals <simbolo>` - **NUOVO**: Segnali MACD avanzati con strategie
+- `/ai <simbolo>` - **NUOVO**: Predizione AI dettagliata
 
 ## 🛠️ Setup e Installazione
 
 ### 1. Clona il Repository
 ```bash
 git clone <repository-url>
-cd TradingBot
+cd Crypto-analyst
 ```
 
 ### 2. Installa Dipendenze
@@ -88,16 +107,149 @@ Per mantenere il bot sempre attivo su Replit:
 - Usa servizi come [UptimeRobot](https://uptimerobot.com/)
 - Aggiungi il tuo Repl URL per ping automatico
 
-## 📊 Esempio di Output
+## 📊 Esempi di Output
+
+### 🤖 Analisi Completa (`/crypto BTC`)
 
 ```
-📊 Analisi BTCUSDT (Binance)
+📊 Analisi Avanzata BTCUSDT (Bybit)
 
 💰 Prezzo attuale: $43,250.50
 🟢 Variazione 24h: +2.4%
 📈 Volume 24h: $18,400,000,000
 
-📋 Indicatori Tecnici:
+🤖 PREDIZIONE AI:
+🟢 BUY **STRONG LONG**
+� Confidenza: 87% | Rischio: HIGH
+
+�📋 Indicatori Tecnici:
+• RSI (14): 65.2 → 🟡 Neutro
+• MACD: 0.002150
+• MACD Signal: 0.001980
+• Volume Ratio: 1.8x
+
+📈 Segnali MACD:
+• Ultimo Crossover: 🟢 BULLISH
+• Divergenza: 🟢 BULLISH
+• Momentum: ⬆️ INCREASING
+
+🎯 Livelli Chiave:
+• Resistenze: $44,100.00, $45,200.00, $46,800.00
+• Supporti: $42,500.00, $41,200.00, $40,000.00
+
+🧠 Segnali AI:
+• MACD crossover bullish
+• Divergenza bullish MACD
+• Volume elevato
+
+💡 Analisi Tecnica:
+📈 MACD crossover bullish - segnale di acquisto confermato | 
+🎯 Vicino alla resistenza $44,100.00 - attenzione | 
+📊 Volume elevato - movimento confermato | 
+🤖 AI ad alta confidenza: 🟢 BUY
+
+📰 Notizie Recenti:
+• [Bitcoin Surges Above $43K as Institutional Interest Grows](https://example.com)
+• [Major Exchange Adds BTC Trading Pairs](https://example.com)
+• [Crypto Market Shows Strong Recovery Signs](https://example.com)
+
+📈 Grafico con S/R e segnali MACD allegato
+⏰ Aggiornato: 14:32:15
+```
+
+### ⚡ Segnali MACD (`/signals ETH`)
+
+```
+📊 Segnali MACD Avanzati - ETHUSDT
+
+💰 Prezzo attuale: $2,680.75
+
+🎯 SEGNALI MACD:
+• Ultimo Crossover: 🔴 BEARISH
+• Divergenza: ➡️ NONE
+• Momentum: ⬇️ DECREASING
+• Forza Segnale: 0.008540
+
+🤖 PREDIZIONE AI:
+🔴 SELL **SHORT**
+• Confidenza: 72%
+• Livello Rischio: MEDIUM
+
+📈 STRATEGIA CONSIGLIATA:
+🔴 ENTRY SHORT: Segnale di vendita confermato
+📊 Stop Loss: Sopra resistenza più vicina
+🎯 Take Profit: Verso supporto più vicino
+
+🎯 LIVELLI CHIAVE:
+🔴 Resistenze: $2,720.00, $2,800.00, $2,950.00
+🟢 Supporti: $2,620.00, $2,550.00, $2,480.00
+
+⏰ Analisi: 14:35:42
+⚠️ Sempre usa stop loss e gestisci il rischio
+```
+
+### 🧠 Predizione AI (`/ai SOL`)
+
+```
+🤖 Analisi AI Dettagliata - SOLUSDT
+
+💰 Prezzo: $98.45
+📊 Variazione 24h: -1.2%
+
+🧠 PREDIZIONE AI:
+⚪ HOLD **HOLD**
+
+📊 METRICHE:
+• Confidenza: 45%
+• Score: 0/10
+• Rischio: LOW
+
+🔍 SEGNALI IDENTIFICATI:
+1. RSI neutrale (stabile)
+2. Volume basso
+3. Trend ribassista
+4. Vicino al supporto (97.20)
+
+🤷 SITUAZIONE INCERTA - ATTENDERE
+
+⏰ 14:38:27
+⚠️ Questa è solo un'analisi AI, non consulenza finanziaria
+```
+
+## 📈 Grafici Professionali
+
+Il bot genera automaticamente grafici con:
+- **Candlestick colorati** (verde/rosso)
+- **Supporti** (linee verdi tratteggiate)
+- **Resistenze** (linee rosse tratteggiate)
+- **Segnali MACD** (frecce up/down sui crossover)
+- **RSI con zone** (ipercomprato/ipervenduto)
+- **MACD istogramma colorato**
+- **Predizione AI** visualizzata nell'angolo
+
+## 🎯 Caratteristiche Tecniche Avanzate
+
+### 🧠 Sistema AI
+- **Multi-indicator scoring** (RSI 20%, MACD 30%, S/R 25%, Volume 15%, Trend 10%)
+- **Confidence scoring** da 0-100%
+- **Risk assessment** automatico
+- **Signal prioritization** intelligente
+
+### 📊 Analisi MACD
+- **Crossover detection** con precisione al millisecondo
+- **Divergence analysis** prezzo vs indicatore
+- **Momentum calculation** basato su istogramma
+- **Signal strength** quantificata
+
+### 🎯 Supporti/Resistenze
+- **Peak detection** con finestra mobile
+- **Level grouping** automatico (soglia 1%)
+- **Proximity alerts** (entro 2% dal prezzo)
+- **Historical strength** valutazione
+
+## ⚠️ Disclaimer
+
+**Questo bot fornisce solo informazioni educative e di analisi tecnica. Non costituisce consulenza finanziaria. Il trading di criptovalute comporta rischi significativi. Usa sempre stop loss, gestisci il rischio e non investire mai più di quanto puoi permetterti di perdere.**
 • RSI (14): 62.1 → 🟡 Neutro
 • MACD: 0.000342
 • MACD Signal: 0.000298
