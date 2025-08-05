@@ -77,34 +77,99 @@ class SignalData:
     signal_type: str
     confidence: float
     current_price: float
-    trading_levels: Dict[str, float]
+    trading_levels: Dict[str, Any]  # Cambiato da Dict[str, float] per includere più info
     timestamp: datetime
     volume_spike: bool
     momentum_strength: str
+    leverage_info: Dict[str, Any] = None  # Informazioni leva
+    volatility: float = 0.0  # Volatilità del mercato
+    anti_fomo_triggered: bool = False  # Flag anti-FOMO
 
-def calculate_trading_levels(symbol: str, current_price: float, ohlcv_data: List) -> Dict[str, float]:
+def calculate_optimal_leverage(confidence: float, volatility: float, signal_strength: str) -> Dict[str, Any]:
     """
-    Calcola livelli di trading precisi con:
+    Calcola la leva ottimale per scalping basata su:
+    - Confidence del segnale
+    - Volatilità del mercato
+    - Forza del segnale
+    """
+    try:
+        # Base leverage calculation
+        if confidence >= 85 and volatility < 2 and signal_strength in ["STRONG_LONG", "STRONG_SHORT"]:
+            leverage = 20  # Alta leva per segnali molto forti e bassa volatilità
+            risk_level = "MEDIUM"
+        elif confidence >= 80 and volatility < 3:
+            leverage = 15  # Leva media-alta
+            risk_level = "MEDIUM"
+        elif confidence >= 75 and volatility < 5:
+            leverage = 10  # Leva moderata
+            risk_level = "MEDIUM-LOW"
+        elif confidence >= 70:
+            leverage = 7   # Leva conservativa
+            risk_level = "LOW"
+        elif confidence >= 65:
+            leverage = 5   # Leva molto conservativa
+            risk_level = "LOW"
+        else:
+            leverage = 3   # Leva minima
+            risk_level = "VERY_LOW"
+        
+        # Riduci leva per alta volatilità
+        if volatility > 8:
+            leverage = max(3, leverage - 5)
+            risk_level = "HIGH"
+        elif volatility > 5:
+            leverage = max(3, leverage - 2)
+        
+        return {
+            'leverage': leverage,
+            'risk_level': risk_level,
+            'max_position_size': f"{5 + (leverage - 3) * 2}%"  # 5-15% del capitale
+        }
+        
+    except Exception as e:
+        logger.error(f"Errore calcolo leva: {e}")
+        return {'leverage': 3, 'risk_level': 'VERY_LOW', 'max_position_size': '5%'}
+
+def calculate_trading_levels(symbol: str, current_price: float, ohlcv_data: List, signal_type: str = "LONG") -> Dict[str, Any]:
+    """
+    Calcola livelli di trading per SCALPING con:
     - Market entry: prezzo corrente
-    - Limit entry: con spread intelligente
-    - Take profit: basato su resistenza/supporto
-    - Stop loss: con buffer di sicurezza
+    - Limit entry: con spread intelligente  
+    - Take profit: piccoli guadagni (0.5-2%)
+    - Stop loss: protezione stretta (0.3-1%)
+    - Percentuali e prezzi di uscita chiari
     """
     try:
         if not ohlcv_data or len(ohlcv_data) < 20:
-            # Fallback con calcoli di base
+            # Fallback con calcoli di base per scalping
             precision = get_price_precision(current_price)
-            spread_pct = 0.5  # Default 0.5%
+            spread_pct = 0.2  # Spread stretto per scalping
             
-            limit_entry = round(current_price * (1 - spread_pct/100), precision)
-            take_profit = round(current_price * 1.03, precision)  # +3%
-            stop_loss = round(current_price * 0.97, precision)   # -3%
+            # SCALPING: profitti piccoli e veloci
+            if signal_type in ["STRONG_LONG", "STRONG_SHORT"]:
+                tp_pct = 1.2   # 1.2% target
+                sl_pct = 0.6   # 0.6% stop loss
+            else:
+                tp_pct = 0.8   # 0.8% target  
+                sl_pct = 0.4   # 0.4% stop loss
             
+            if signal_type in ["LONG", "STRONG_LONG"]:
+                limit_entry = round(current_price * (1 - spread_pct/100), precision)
+                take_profit = round(current_price * (1 + tp_pct/100), precision)
+                stop_loss = round(current_price * (1 - sl_pct/100), precision)
+            else:  # SHORT
+                limit_entry = round(current_price * (1 + spread_pct/100), precision)
+                take_profit = round(current_price * (1 - tp_pct/100), precision)
+                stop_loss = round(current_price * (1 + sl_pct/100), precision)
+                
             return {
                 'market_entry': round(current_price, precision),
                 'limit_entry': limit_entry,
                 'take_profit': take_profit,
-                'stop_loss': stop_loss
+                'stop_loss': stop_loss,
+                'tp_percentage': f"+{tp_pct}%" if signal_type in ["LONG", "STRONG_LONG"] else f"-{tp_pct}%",
+                'sl_percentage': f"-{sl_pct}%" if signal_type in ["LONG", "STRONG_LONG"] else f"+{sl_pct}%",
+                'risk_reward_ratio': round(tp_pct / sl_pct, 2)
             }
         
         # Converti OHLCV in DataFrame
@@ -117,79 +182,73 @@ def calculate_trading_levels(symbol: str, current_price: float, ohlcv_data: List
         # Calcola precisione dinamica basata sul valore del token
         precision = get_price_precision(current_price)
         
-        # Calcola volatilità per spread intelligente
+        # Calcola volatilità per determinare livelli di scalping
         returns = df['close'].pct_change().dropna()
         volatility = returns.std() * 100  # Volatilità in percentuale
         
-        # Spread intelligente basato su volatilità (0.1% - 2%)
+        # Analizza trend recente per evitare FOMO
+        recent_prices = df['close'].tail(10)
+        price_change_10min = ((recent_prices.iloc[-1] - recent_prices.iloc[0]) / recent_prices.iloc[0]) * 100
+        
+        # PROTEZIONE ANTI-FOMO: se il prezzo è salito/sceso troppo velocemente, riduci aggressività
+        rapid_movement = abs(price_change_10min) > 3  # Se movimento >3% in 10 candele
+        
+        # Spread per entry ottimizzato per scalping
         if volatility < 1:
+            spread_pct = 0.05  # Spread molto stretto
+        elif volatility < 2:
             spread_pct = 0.1
-        elif volatility < 3:
-            spread_pct = 0.3
-        elif volatility < 5:
-            spread_pct = 0.5
-        elif volatility < 10:
-            spread_pct = 1.0
+        elif volatility < 4:
+            spread_pct = 0.2
         else:
-            spread_pct = 2.0
+            spread_pct = 0.3  # Max spread per scalping
         
-        # Market entry = prezzo corrente
-        market_entry = round(current_price, precision)
-        
-        # Limit entry = prezzo corrente - spread
-        limit_entry = round(current_price * (1 - spread_pct/100), precision)
-        
-        # Calcola supporto e resistenza per take profit e stop loss
-        resistance_levels = []
-        support_levels = []
-        
-        # Trova massimi e minimi locali
-        for i in range(2, len(df) - 2):
-            # Resistenza (massimi locali)
-            if (df['high'].iloc[i] > df['high'].iloc[i-1] and 
-                df['high'].iloc[i] > df['high'].iloc[i-2] and
-                df['high'].iloc[i] > df['high'].iloc[i+1] and 
-                df['high'].iloc[i] > df['high'].iloc[i+2]):
-                resistance_levels.append(df['high'].iloc[i])
-            
-            # Supporto (minimi locali)
-            if (df['low'].iloc[i] < df['low'].iloc[i-1] and 
-                df['low'].iloc[i] < df['low'].iloc[i-2] and
-                df['low'].iloc[i] < df['low'].iloc[i+1] and 
-                df['low'].iloc[i] < df['low'].iloc[i+2]):
-                support_levels.append(df['low'].iloc[i])
-        
-        # Take profit: resistenza più vicina sopra il prezzo corrente
-        valid_resistance = [r for r in resistance_levels if r > current_price]
-        if valid_resistance:
-            nearest_resistance = min(valid_resistance)
-            take_profit = round(nearest_resistance * 0.99, precision)  # 1% sotto la resistenza
-        else:
-            # Fallback: basato su volatilità
-            if volatility < 2:
-                tp_pct = 1.5
-            elif volatility < 5:
-                tp_pct = 3.0
-            elif volatility < 10:
-                tp_pct = 5.0
+        # SCALPING: Target profit piccoli ma consistenti
+        if signal_type in ["STRONG_LONG", "STRONG_SHORT"]:
+            if volatility < 2 and not rapid_movement:
+                tp_pct = 1.5   # 1.5% per segnali forti in mercato stabile
+                sl_pct = 0.7   # 0.7% stop loss
             else:
-                tp_pct = 8.0
-            take_profit = round(current_price * (1 + tp_pct/100), precision)
+                tp_pct = 1.0   # Riduci target se volatilità alta o movimento rapido
+                sl_pct = 0.5
+        else:  # LONG/SHORT normali
+            if volatility < 2 and not rapid_movement:
+                tp_pct = 1.0   # 1% target per segnali normali
+                sl_pct = 0.5   # 0.5% stop loss
+            else:
+                tp_pct = 0.7   # Target più conservativo
+                sl_pct = 0.4
         
-        # Stop loss: supporto più vicino sotto il prezzo corrente
-        valid_support = [s for s in support_levels if s < current_price]
-        if valid_support:
-            nearest_support = max(valid_support)
-            stop_loss = round(nearest_support * 0.99, precision)  # 1% sotto il supporto
+        # Calcolo livelli basato sulla direzione
+        if signal_type in ["LONG", "STRONG_LONG"]:
+            # LONG positions
+            limit_entry = round(current_price * (1 - spread_pct/100), precision)
+            take_profit = round(current_price * (1 + tp_pct/100), precision) 
+            stop_loss = round(current_price * (1 - sl_pct/100), precision)
+            tp_percentage = f"+{tp_pct}%"
+            sl_percentage = f"-{sl_pct}%"
         else:
-            # Fallback: 3% sotto il prezzo corrente
-            stop_loss = round(current_price * 0.97, precision)
+            # SHORT positions  
+            limit_entry = round(current_price * (1 + spread_pct/100), precision)
+            take_profit = round(current_price * (1 - tp_pct/100), precision)
+            stop_loss = round(current_price * (1 + sl_pct/100), precision)
+            tp_percentage = f"-{tp_pct}%"
+            sl_percentage = f"+{sl_pct}%"
+        
+        # Calcola R/R ratio
+        risk_reward = round(tp_pct / sl_pct, 2)
         
         return {
-            'market_entry': market_entry,
+            'market_entry': round(current_price, precision),
             'limit_entry': limit_entry,
             'take_profit': take_profit,
-            'stop_loss': stop_loss
+            'stop_loss': stop_loss,
+            'tp_percentage': tp_percentage,
+            'sl_percentage': sl_percentage,
+            'risk_reward_ratio': risk_reward,
+            'volatility': round(volatility, 2),
+            'rapid_movement_detected': rapid_movement,
+            'scalping_duration': "1-5 min" if signal_type.startswith("STRONG") else "3-10 min"
         }
         
     except Exception as e:
@@ -428,17 +487,30 @@ def ai_trading_prediction(symbol: str, data: Dict, indicators: Dict) -> Dict:
         # Normalizza il punteggio (-100 a +100) in confidence (0-100)
         confidence = min(100, max(0, (total_score + 100) / 2))
         
-        # Determina segnale e forza
-        if total_score >= 30:
+        # PROTEZIONE ANTI-FOMO: Analisi movimento recente
+        recent_data = data['ohlcv'][-10:] if len(data['ohlcv']) >= 10 else data['ohlcv']
+        if len(recent_data) > 1:
+            recent_change = ((recent_data[-1][4] - recent_data[0][4]) / recent_data[0][4]) * 100
+            rapid_movement = abs(recent_change) > 3  # Movimento >3% nelle ultime candele
+            
+            # Riduci confidence se c'è movimento rapido (possibile FOMO)
+            if rapid_movement:
+                confidence = confidence * 0.8  # Riduci del 20%
+                logger.info(f"ANTI-FOMO: Movimento rapido rilevato per {symbol} ({recent_change:.2f}%), confidence ridotta")
+        else:
+            rapid_movement = False
+        
+        # Determina segnale e forza (soglie più alte per evitare falsi segnali)
+        if total_score >= 35 and confidence >= 75:  # Soglie più rigorose
             signal_type = "STRONG_LONG"
             momentum_strength = "FORTE"
-        elif total_score >= 15:
+        elif total_score >= 20 and confidence >= 70:
             signal_type = "LONG"
             momentum_strength = "MODERATO"
-        elif total_score <= -30:
+        elif total_score <= -35 and confidence >= 75:
             signal_type = "STRONG_SHORT"
             momentum_strength = "FORTE"
-        elif total_score <= -15:
+        elif total_score <= -20 and confidence >= 70:
             signal_type = "SHORT"
             momentum_strength = "MODERATO"
         else:
@@ -448,8 +520,15 @@ def ai_trading_prediction(symbol: str, data: Dict, indicators: Dict) -> Dict:
         # Verifica volume spike
         volume_spike = volume_ratio > 1.8
         
-        # Calcola livelli di trading precisi
-        trading_levels = calculate_trading_levels(symbol, current_price, data['ohlcv'])
+        # Calcola volatilità per leva
+        returns = np.array([x[4] for x in data['ohlcv'][-20:]])
+        volatility = np.std(np.diff(returns) / returns[:-1]) * 100 if len(returns) > 1 else 2.0
+        
+        # Calcola livelli di trading per scalping con direzione corretta
+        trading_levels = calculate_trading_levels(symbol, current_price, data['ohlcv'], signal_type)
+        
+        # Calcola leva ottimale
+        leverage_info = calculate_optimal_leverage(confidence, volatility, signal_type)
         
         return {
             'signal': signal_type,
@@ -457,6 +536,9 @@ def ai_trading_prediction(symbol: str, data: Dict, indicators: Dict) -> Dict:
             'momentum_strength': momentum_strength,
             'volume_spike': volume_spike,
             'trading_levels': trading_levels,
+            'leverage_info': leverage_info,
+            'volatility': round(volatility, 2),
+            'anti_fomo_triggered': rapid_movement,
             'scores_breakdown': scores,
             'total_score': total_score
         }
@@ -474,7 +556,7 @@ def ai_trading_prediction(symbol: str, data: Dict, indicators: Dict) -> Dict:
         }
 
 def format_signal_message(signal_data: SignalData) -> str:
-    """Formatta il messaggio del segnale con livelli di trading precisi"""
+    """Formatta il messaggio del segnale con LEVA ottimale e info SCALPING"""
     try:
         # Emoji e direzione
         direction_emoji = "🚀" if "LONG" in signal_data.signal_type else "🔻"
@@ -482,8 +564,6 @@ def format_signal_message(signal_data: SignalData) -> str:
         
         # Precisione dinamica per i prezzi
         precision = get_price_precision(signal_data.current_price)
-        
-        # Formato prezzo base
         price_format = f"{{:.{precision}f}}"
         
         # Livelli di trading
@@ -493,39 +573,67 @@ def format_signal_message(signal_data: SignalData) -> str:
         take_profit = price_format.format(levels.get('take_profit', signal_data.current_price))
         stop_loss = price_format.format(levels.get('stop_loss', signal_data.current_price))
         
-        # Calcola profit/loss potenziale
-        if 'LONG' in signal_data.signal_type:
-            profit_pct = ((levels.get('take_profit', signal_data.current_price) / signal_data.current_price) - 1) * 100
-            loss_pct = ((signal_data.current_price / levels.get('stop_loss', signal_data.current_price)) - 1) * 100
-        else:
-            profit_pct = ((signal_data.current_price / levels.get('take_profit', signal_data.current_price)) - 1) * 100
-            loss_pct = ((levels.get('stop_loss', signal_data.current_price) / signal_data.current_price) - 1) * 100
+        # Informazioni leva dal signal_data (assumendo che sia stato aggiunto)
+        leverage_info = getattr(signal_data, 'leverage_info', {'leverage': 5, 'risk_level': 'MEDIUM', 'max_position_size': '10%'})
+        volatility = getattr(signal_data, 'volatility', 2.0)
+        anti_fomo = getattr(signal_data, 'anti_fomo_triggered', False)
         
-        # Forza momentum
+        # Percentuali di trading dal levels
+        tp_percentage = levels.get('tp_percentage', '+1.0%')
+        sl_percentage = levels.get('sl_percentage', '-0.5%') 
+        rr_ratio = levels.get('risk_reward_ratio', 2.0)
+        scalping_duration = levels.get('scalping_duration', '3-10 min')
+        
+        # Calcola profit/loss con leva
+        leverage = leverage_info['leverage']
+        base_profit = float(tp_percentage.replace('%', '').replace('+', '').replace('-', ''))
+        base_loss = float(sl_percentage.replace('%', '').replace('+', '').replace('-', ''))
+        
+        leveraged_profit = base_profit * leverage
+        leveraged_loss = base_loss * leverage
+        
+        # Forza momentum e indicatori
         strength_emoji = "⚡" if signal_data.momentum_strength == "FORTE" else "📊"
-        
-        # Volume spike
         volume_text = " | 📈 VOLUME SPIKE" if signal_data.volume_spike else ""
+        fomo_warning = " | ⚠️ MOVIMENTO RAPIDO" if anti_fomo else ""
         
-        message = f"""🎯 **SEGNALE CRIPTO AUTOMATICO**
+        # Risk level emoji
+        risk_emojis = {
+            'VERY_LOW': '🟢', 'LOW': '🟢', 'MEDIUM-LOW': '🟡', 
+            'MEDIUM': '🟡', 'HIGH': '🟠', 'VERY_HIGH': '🔴'
+        }
+        risk_emoji = risk_emojis.get(leverage_info['risk_level'], '🟡')
+        
+        message = f"""🎯 **SEGNALE SCALPING AI** 
         
 {direction_emoji} **{signal_data.symbol}/USDT** - {direction_text}
-{strength_emoji} **Confidence:** {signal_data.confidence}% | **Momentum:** {signal_data.momentum_strength}{volume_text}
+{strength_emoji} **Confidence:** {signal_data.confidence}% | **Momentum:** {signal_data.momentum_strength}{volume_text}{fomo_warning}
 
-💰 **LIVELLI DI TRADING:**
-📊 **Market Entry:** ${market_entry}
+💎 **SETUP SCALPING:**
+⏱️ **Durata:** {scalping_duration}
+📊 **Volatilità:** {volatility}%
+{risk_emoji} **Risk Level:** {leverage_info['risk_level']}
+
+⚡ **LEVA CONSIGLIATA:** {leverage}x
+💰 **Position Size:** {leverage_info['max_position_size']} del capitale
+
+💱 **LIVELLI DI TRADING:**
+📊 **Market Entry:** ${market_entry} 
 🎯 **Limit Entry:** ${limit_entry}
-🚀 **Take Profit:** ${take_profit}
-🛡️ **Stop Loss:** ${stop_loss}
+🚀 **Take Profit:** ${take_profit} ({tp_percentage})
+🛡️ **Stop Loss:** ${stop_loss} ({sl_percentage})
 
-📈 **PROFIT/LOSS POTENZIALE:**
-✅ **Target:** +{profit_pct:.1f}%
-❌ **Risk:** -{loss_pct:.1f}%
-📊 **R/R Ratio:** {profit_pct/loss_pct:.1f}:1
+� **PROFITTO CON LEVA {leverage}x:**
+✅ **Target:** +{leveraged_profit:.1f}% (senza leva: {tp_percentage})
+❌ **Risk:** -{leveraged_loss:.1f}% (senza leva: {sl_percentage})
+📊 **R/R Ratio:** {rr_ratio}:1
 
 🕐 **Timestamp:** {signal_data.timestamp.strftime('%H:%M:%S')}
         
-⚠️ **DISCLAIMER:** Segnale automatico AI - NON consiglio finanziario!"""
+⚠️ **SCALPING DISCLAIMER:** 
+• Chiudi posizione velocemente ({scalping_duration})
+• Usa SEMPRE stop loss con leva {leverage}x
+• NON è consiglio finanziario!"""
         
         return message
         
@@ -657,7 +765,10 @@ async def monitor_crypto_signals():
                                 trading_levels=prediction['trading_levels'],
                                 timestamp=datetime.now(),
                                 volume_spike=prediction['volume_spike'],
-                                momentum_strength=prediction['momentum_strength']
+                                momentum_strength=prediction['momentum_strength'],
+                                leverage_info=prediction.get('leverage_info', {'leverage': 5, 'risk_level': 'MEDIUM'}),
+                                volatility=prediction.get('volatility', 2.0),
+                                anti_fomo_triggered=prediction.get('anti_fomo_triggered', False)
                             )
                             
                             message = format_signal_message(signal_data)
@@ -793,7 +904,7 @@ async def telegram_analyze(update, context):
         await update.message.reply_text(f"❌ **Errore nell'analisi:** {str(e)}", parse_mode='Markdown')
 
 def format_detailed_analysis(symbol: str, data: Dict, indicators: Dict, prediction: Dict) -> str:
-    """Formatta un'analisi dettagliata per una crypto specifica"""
+    """Formatta un'analisi dettagliata con LEVA e setup SCALPING per una crypto specifica"""
     try:
         current_price = data['current_price']
         change_24h = data['change_24h']
@@ -815,8 +926,25 @@ def format_detailed_analysis(symbol: str, data: Dict, indicators: Dict, predicti
         confidence = prediction['confidence']
         momentum_strength = prediction['momentum_strength']
         
-        # Emoji per direzione
+        # Nuove informazioni per scalping
+        leverage_info = prediction.get('leverage_info', {'leverage': 5, 'risk_level': 'MEDIUM', 'max_position_size': '10%'})
+        volatility = prediction.get('volatility', 2.0)
+        anti_fomo = prediction.get('anti_fomo_triggered', False)
+        
+        # Info dai levels
+        tp_percentage = levels.get('tp_percentage', '+1.0%')
+        sl_percentage = levels.get('sl_percentage', '-0.5%')
+        rr_ratio = levels.get('risk_reward_ratio', 2.0)
+        scalping_duration = levels.get('scalping_duration', '3-10 min')
+        rapid_movement = levels.get('rapid_movement_detected', False)
+        
+        # Emoji per direzione e risk level
         direction_emoji = "🚀" if "LONG" in signal_type else "🔻" if "SHORT" in signal_type else "⚪"
+        risk_emojis = {
+            'VERY_LOW': '🟢', 'LOW': '🟢', 'MEDIUM-LOW': '🟡', 
+            'MEDIUM': '🟡', 'HIGH': '🟠', 'VERY_HIGH': '🔴'
+        }
+        risk_emoji = risk_emojis.get(leverage_info['risk_level'], '🟡')
         
         # Indicatori tecnici
         rsi = indicators.get('rsi', 0)
@@ -830,39 +958,43 @@ def format_detailed_analysis(symbol: str, data: Dict, indicators: Dict, predicti
         
         # RSI Analysis
         if rsi < 30:
-            analysis_text.append("• **RSI Oversold** - Possibile rimbalzo")
+            analysis_text.append("• **RSI Oversold** - Buona opportunità di rimbalzo")
         elif rsi > 70:
-            analysis_text.append("• **RSI Overbought** - Possibile correzione")
+            analysis_text.append("• **RSI Overbought** - Possibile correzione in arrivo")
         else:
-            analysis_text.append("• **RSI Neutrale** - Mercato bilanciato")
+            analysis_text.append("• **RSI Neutrale** - Mercato bilanciato, attendi conferme")
         
         # MACD Analysis
         if macd > macd_signal:
-            analysis_text.append("• **MACD Bullish** - Momentum positivo")
+            analysis_text.append("• **MACD Bullish** - Momentum positivo confermato")
         else:
-            analysis_text.append("• **MACD Bearish** - Momentum negativo")
+            analysis_text.append("• **MACD Bearish** - Momentum negativo, cautela")
         
         # Bollinger Bands
         if bb_position < 0.2:
-            analysis_text.append("• **Vicino Lower Band** - Possibile supporto")
+            analysis_text.append("• **Vicino Lower Band** - Supporto forte, possibile rimbalzo")
         elif bb_position > 0.8:
-            analysis_text.append("• **Vicino Upper Band** - Possibile resistenza")
+            analysis_text.append("• **Vicino Upper Band** - Resistenza, possibile correzione")
         
         # Volume
         if volume_ratio > 1.5:
-            analysis_text.append("• **Volume Alto** - Interesse crescente")
+            analysis_text.append("• **Volume Alto** - Movimento confermato da volume spike")
+        
+        # Anti-FOMO warning
+        if anti_fomo or rapid_movement:
+            analysis_text.append("• **⚠️ MOVIMENTO RAPIDO** - Possibile FOMO, attendi conferma")
         
         analysis_summary = "\n".join(analysis_text) if analysis_text else "• Mercato in condizioni normali"
         
-        # Calcola profit/loss potenziale
-        if 'LONG' in signal_type:
-            profit_pct = ((levels.get('take_profit', current_price) / current_price) - 1) * 100
-            loss_pct = ((current_price / levels.get('stop_loss', current_price)) - 1) * 100
-        else:
-            profit_pct = ((current_price / levels.get('take_profit', current_price)) - 1) * 100
-            loss_pct = ((levels.get('stop_loss', current_price) / current_price) - 1) * 100
+        # Calcola profit/loss con leva
+        leverage = leverage_info['leverage']
+        base_profit = float(tp_percentage.replace('%', '').replace('+', '').replace('-', ''))
+        base_loss = float(sl_percentage.replace('%', '').replace('+', '').replace('-', ''))
         
-        message = f"""📊 **ANALISI DETTAGLIATA {symbol}/USDT**
+        leveraged_profit = base_profit * leverage
+        leveraged_loss = base_loss * leverage
+
+        message = f"""📊 **ANALISI SCALPING DETTAGLIATA {symbol}/USDT**
 
 💰 **PREZZO CORRENTE:** ${current_price:.{precision}f}
 📈 **Variazione 24h:** {change_24h:+.2f}%
@@ -872,16 +1004,24 @@ def format_detailed_analysis(symbol: str, data: Dict, indicators: Dict, predicti
 ⚡ **Confidence:** {confidence}%
 📊 **Momentum:** {momentum_strength}
 
-💎 **LIVELLI DI TRADING:**
+💎 **SETUP SCALPING:**
+⏱️ **Durata consigliata:** {scalping_duration}
+📊 **Volatilità:** {volatility}%
+{risk_emoji} **Risk Level:** {leverage_info['risk_level']}
+
+⚡ **LEVA CONSIGLIATA:** {leverage}x
+💰 **Position Size:** {leverage_info['max_position_size']} del capitale
+
+💱 **LIVELLI DI TRADING:**
 📊 **Market Entry:** ${market_entry}
 🎯 **Limit Entry:** ${limit_entry}
-🚀 **Take Profit:** ${take_profit}
-🛡️ **Stop Loss:** ${stop_loss}
+🚀 **Take Profit:** ${take_profit} ({tp_percentage})
+🛡️ **Stop Loss:** ${stop_loss} ({sl_percentage})
 
-📈 **POTENZIALE:**
-✅ **Target:** +{profit_pct:.1f}%
-❌ **Risk:** -{loss_pct:.1f}%
-📊 **R/R Ratio:** {profit_pct/loss_pct:.1f}:1
+� **PROFIT/LOSS CON LEVA {leverage}x:**
+✅ **Target:** +{leveraged_profit:.1f}% (senza leva: {tp_percentage})
+❌ **Risk:** -{leveraged_loss:.1f}% (senza leva: {sl_percentage})
+📊 **R/R Ratio:** {rr_ratio}:1
 
 🔍 **INDICATORI TECNICI:**
 • **RSI:** {rsi:.1f}
@@ -889,12 +1029,15 @@ def format_detailed_analysis(symbol: str, data: Dict, indicators: Dict, predicti
 • **BB Position:** {bb_position:.1%}
 • **Volume Ratio:** {volume_ratio:.1f}x
 
-📋 **ANALISI:**
+📋 **ANALISI AI:**
 {analysis_summary}
 
 🕐 **Analisi generata:** {datetime.now().strftime('%H:%M:%S')}
 
-⚠️ **DISCLAIMER:** Analisi automatica AI - NON consiglio finanziario!"""
+⚠️ **SCALPING DISCLAIMER:** 
+• Chiudi posizione entro {scalping_duration}
+• Usa SEMPRE stop loss con leva {leverage}x
+• NON è consiglio finanziario!"""
         
         return message
         
